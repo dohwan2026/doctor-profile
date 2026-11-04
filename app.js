@@ -13,7 +13,10 @@ const HOSPITALS = (window.DOCTOR_INDEX || []).slice().sort((a, b) => a.hospital.
 const DOCTORS = HOSPITALS.flatMap(h => h.doctors.map(d => ({ ...d, hospital: h.hospital, code: h.code, collectedAt: h.collectedAt })));
 const BY_ID = new Map(DOCTORS.map(d => [d.id, d]));
 // 검색용 문자열 미리 만들기
+// 진료과 묶음용 이름: "[ 소화기내과 (건강증진센터) ]" → "소화기내과", "외과(암센터)" → "외과"
+const baseDept = n => String(n || '').replace(/^\[\s*|\s*\]$/g, '').replace(/\s*\([^()]*\)\s*$/, '').replace(/(과)분과$/, '$1').trim();
 for (const d of DOCTORS) {
+  d._dept = baseDept(d.dept);
   d._name = d.name.toLowerCase();
   d._main = [d.name, d.hospital, ...(d.depts || [d.dept]), ...(d.specialties || [])].join(' ').toLowerCase();
 }
@@ -86,6 +89,57 @@ function search(q) {
   return out.sort((a, b) => b[0] - a[0] || (careerYears(b[1]) ?? -1) - (careerYears(a[1]) ?? -1) || a[1].name.localeCompare(b[1].name, 'ko')).map(x => x[1]);
 }
 
+// ---------- 홈 화면에 추가 안내 ----------
+const UA = navigator.userAgent;
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(UA);
+const IN_APP = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(UA);   // 카톡 등 앱 안 브라우저
+const IS_STANDALONE = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const KEY_INSTALL = 'dp.installHide';
+let installPrompt = null;   // 안드로이드 Chrome 이 주는 설치 이벤트
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  if (!location.hash || location.hash === '#/' || location.hash === '#/info') render();
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('홈 화면에 추가했어요'); render(); });
+
+function installSteps() {
+  if (IN_APP) {
+    return IS_IOS
+      ? '카카오톡 등 앱 안에서는 홈 화면에 추가할 수 없어요. 오른쪽 아래 <b>⋯</b> 또는 공유 버튼 → <b>Safari로 열기</b> 후 다시 해 주세요.'
+      : '카카오톡 등 앱 안에서는 홈 화면에 추가할 수 없어요. 오른쪽 위 <b>⋮</b> → <b>다른 브라우저로 열기</b>(Chrome) 후 다시 해 주세요.';
+  }
+  if (IS_IOS) return 'Safari 아래쪽 <b>공유 버튼(□↑)</b> → <b>홈 화면에 추가</b> → <b>추가</b>를 누르세요.';
+  if (IS_ANDROID) return 'Chrome 오른쪽 위 <b>⋮</b> → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b> → <b>설치</b>를 누르세요.';
+  return '폰에서 이 주소를 열어 홈 화면에 추가하면 앱처럼 쓸 수 있어요.';
+}
+function installBanner(force = false) {
+  if (IS_STANDALONE) return force ? '<p class="note" style="margin:0">지금 홈 화면 앱으로 쓰고 있어요.</p>' : '';
+  if (!force) {
+    let hidden = false;
+    try { hidden = localStorage.getItem(KEY_INSTALL) === '1'; } catch {}
+    if (hidden || !(IS_IOS || IS_ANDROID)) return '';
+  }
+  const btn = installPrompt && !IN_APP ? '<button class="btn primary" id="installBtn">앱으로 설치</button>' : '';
+  return `<div class="${force ? '' : 'card install'}">
+    ${force ? '' : '<button class="icon-btn install-x" id="installX" aria-label="닫기">✕</button><b>홈 화면에 추가하면 앱처럼 쓸 수 있어요</b>'}
+    ${btn ? `<div style="margin:8px 0">${btn}</div><p class="note" style="margin:0">버튼이 안 되면: ${installSteps()}</p>` : `<p class="note" style="margin:6px 0 0">${installSteps()}</p>`}
+  </div>`;
+}
+function bindInstall() {
+  const b = $('#installBtn');
+  if (b) b.onclick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null;
+    render();
+  };
+  const x = $('#installX');
+  if (x) x.onclick = () => { try { localStorage.setItem(KEY_INSTALL, '1'); } catch {} x.closest('.install').remove(); };
+}
+
 // ---------- 라우팅 ----------
 const go = h => { location.hash = h; };
 window.addEventListener('hashchange', render);
@@ -141,6 +195,7 @@ function renderHome() {
     ? `<div class="chips hosp-chips">${['', ...HOSPITALS.map(h => h.hospital)].map(h =>
         `<button class="chip ${hospFilter === h ? '' : 'plain'}" data-h="${esc(h)}">${h ? esc(h) : '전체 병원'}</button>`).join('')}</div>` : '';
   view.innerHTML = `
+    ${installBanner()}
     <input class="search" type="search" id="q" placeholder="의사 이름, 진료과, 질환 (예: 무릎, 갑상선)" value="${esc(query)}" autocomplete="off">
     ${hospChips}
     <div id="res"></div>`;
@@ -148,6 +203,7 @@ function renderHome() {
   if (hc) hc.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); renderHome(); } };
   const res = $('#res');
   bindCards(res);
+  bindInstall();
   const draw = () => {
     const q = query.trim();
     if (q) {
@@ -159,7 +215,7 @@ function renderHome() {
     }
     const favs = DOCTORS.filter(d => noteOf(d.id).fav);
     const depts = {};
-    for (const d of DOCTORS) if (inHosp(d) && d.dept) depts[d.dept] = (depts[d.dept] || 0) + 1;
+    for (const d of DOCTORS) if (inHosp(d) && d._dept) depts[d._dept] = (depts[d._dept] || 0) + 1;
     const hosp = HOSPITALS.map(h => `${esc(h.hospital)} ${h.doctors.length}명`).join(', ');
     res.innerHTML = `
       ${favs.length ? `<h2 class="h2">관심 의사</h2>${favs.map(docCard).join('')}` : ''}
@@ -175,7 +231,7 @@ function renderHome() {
 function renderDept(dept) {
   setChrome(dept, true);
   window.scrollTo(0, 0);
-  const list = DOCTORS.filter(d => inHosp(d) && (d.dept === dept || (d.depts || []).includes(dept)))
+  const list = DOCTORS.filter(d => inHosp(d) && (d._dept === dept || (d.depts || []).some(x => baseDept(x) === dept)))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
   view.innerHTML = `<p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
   bindCards(view);
@@ -260,11 +316,13 @@ function renderInfo() {
       <dl class="kv">${HOSPITALS.map(h => `<dt>${esc(h.hospital)}</dt><dd>${h.doctors.length}명 · ${esc(h.collectedAt)} 수집</dd>`).join('')}</dl>
       <p class="note">병원 홈페이지의 의료진 소개(학력·경력·학회·논문)를 모은 것이에요. 의사 개인별 진료·수술 건수는 병원이 공개하지 않아 들어 있지 않아요.</p>
     </section>
+    <section class="card sec"><h2>홈 화면에 추가</h2>${installBanner(true)}</section>
     <section class="card sec"><h2>내 메모 백업</h2>
       <p class="note" style="margin:0 0 10px">관심 의사와 메모는 이 폰의 브라우저에만 저장돼요 (${memoCount}명).</p>
       <div class="row"><button class="btn" id="exportBtn">내보내기</button>
         <label class="btn">가져오기<input type="file" id="importFile" accept="application/json,.json" hidden></label></div>
     </section>`;
+  bindInstall();
   $('#exportBtn').onclick = () => {
     const blob = new Blob([JSON.stringify({ app: 'doctor-profile', notes }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');

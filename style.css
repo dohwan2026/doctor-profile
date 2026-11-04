@@ -160,3 +160,5 @@ code { font-size: 14px; }
 .hosp-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
 .hosp-chips::-webkit-scrollbar { display: none; }
 .hosp-chips .chip { flex: none; white-space: nowrap; }
+.install { position: relative; padding-right: 44px; background: var(--accent-soft); border-color: transparent; }
+.install-x { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; font-size: 16px; color: var(--muted); }
