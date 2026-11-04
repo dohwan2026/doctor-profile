@@ -12,6 +12,29 @@ const view = $('#view');
 const HOSPITALS = (window.DOCTOR_INDEX || []).slice().sort((a, b) => a.hospital.localeCompare(b.hospital, 'ko'));
 const DOCTORS = HOSPITALS.flatMap(h => h.doctors.map(d => ({ ...d, hospital: h.hospital, code: h.code, collectedAt: h.collectedAt })));
 const BY_ID = new Map(DOCTORS.map(d => [d.id, d]));
+const GRADES = Object.fromEntries(HOSPITALS.map(h => [h.code, h.grades]));
+
+// 심평원 병원평가 (병원 단위 등급). m = 이 의사와 관련 있는지 (진료과·진료분야 기준)
+const ASM = [
+  ['asmGrd13', '위암', /위암|위장관|위식도/],
+  ['asmGrd12', '대장암', /대장|결장|직장|항문/],
+  ['asmGrd14', '유방암', /유방/],
+  ['asmGrd15', '폐암', /폐암|폐식도|흉강경|흉부외과/],
+  ['asmGrd06', '관상동맥우회술 (심장 수술)', /심장혈관흉부|심장외과|흉부외과|관상동맥/],
+  ['asmGrd01', '급성기 뇌졸중', /뇌졸중|뇌혈관|신경과|신경외과/],
+  ['asmGrd21', '마취', /마취/],
+  ['asmGrd05', '수술 감염 예방 (항생제)', null],
+  ['asmGrd19', '중환자실', /중환자/],
+];
+function hospGrades(d) {
+  const g = GRADES[d.code];
+  if (!g) return null;
+  const text = [d.dept, ...(d.depts || []), ...(d.specialties || [])].join(' ');
+  const rows = ASM.filter(([k]) => g[k]).map(([k, label, re]) => ({ label, v: g[k], rel: re ? re.test(text) : !!d.surgery }));
+  return { at: g.at, mine: rows.filter(r => r.rel), rest: rows.filter(r => !r.rel) };
+}
+const gradeChip = v => /^\d$/.test(v)
+  ? `<span class="grade g${v}">${v}등급</span>` : `<span class="grade gx">등급 없음</span>`;
 // 검색용 문자열 미리 만들기
 // 진료과 묶음용 이름: "[ 소화기내과 (건강증진센터) ]" → "소화기내과", "외과(암센터)" → "외과"
 const baseDept = n => String(n || '').replace(/^\[\s*|\s*\]$/g, '').replace(/\s*\([^()]*\)\s*$/, '').replace(/(과)분과$/, '$1').trim();
@@ -259,6 +282,16 @@ function deptText(d) {
   const all = d.depts && d.depts.length ? d.depts : [d.dept].filter(Boolean);
   return all.length > 3 ? `${all.slice(0, 3).join(', ')} 외 ${all.length - 3}곳` : all.join(', ');
 }
+function gradeSec(d) {
+  const g = hospGrades(d);
+  if (!g || !(g.mine.length + g.rest.length)) return '';
+  const li = r => `<li class="grade-row"><span>${esc(r.label)}</span>${gradeChip(r.v)}</li>`;
+  return `<section class="card sec"><h2>${esc(d.hospital)} 평가 등급 <small>심평원</small></h2>
+    ${g.mine.length ? `<ul class="grades">${g.mine.map(li).join('')}</ul>` : '<p class="note" style="margin:0">이 의사 진료과와 직접 관련된 평가 항목은 없어요.</p>'}
+    ${g.rest.length ? `<details><summary class="note" style="margin:8px 0 0;cursor:pointer">이 병원의 다른 평가 ${g.rest.length}개</summary><ul class="grades">${g.rest.map(li).join('')}</ul></details>` : ''}
+    <p class="note" style="margin:8px 0 0">의사 개인이 아닌 <b>병원 전체</b> 평가예요 (1등급이 가장 좋음). 건강보험심사평가원 적정성 평가 최근 결과 · ${esc(g.at)} 확인</p>
+  </section>`;
+}
 function renderDetail(id) {
   const base = BY_ID.get(id);
   if (!base) return go('#/');
@@ -300,6 +333,7 @@ function renderDetail(id) {
       ${(d.specialties || []).some(x => SURG_RE.test(x)) ? '<p class="note" style="margin:8px 0 0">주황색 = 진료분야에 적힌 수술·시술 (병원이 수술 건수는 공개하지 않아요)</p>' : ''}
     </section>
     ${tiles.length ? `<div class="tiles">${tiles.join('')}</div>` : '<div style="height:12px"></div>'}
+    ${gradeSec(d)}
     ${now.length ? `<section class="card sec"><h2>현재 맡고 있는 일</h2><ul>${now.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
     ${(d.roles || []).length ? `<section class="card sec"><h2>학회 주요 직책 <small>${d.roles.length}</small></h2>
       <p class="note" style="margin:0 0 6px">그 분야 학회에서 회장·이사 등을 맡았다는 건 동료 의사들에게 인정받는다는 간접 지표예요.</p>
@@ -333,6 +367,7 @@ function renderInfo() {
     <section class="card sec"><h2>수록 데이터</h2>
       <dl class="kv">${HOSPITALS.map(h => `<dt>${esc(h.hospital)}</dt><dd>${h.doctors.length}명 · ${esc(h.collectedAt)} 수집</dd>`).join('')}</dl>
       <p class="note">병원 홈페이지의 의료진 소개(학력·경력·학회·논문)를 모은 것이에요. 의사 개인별 진료·수술 건수는 병원이 공개하지 않아 들어 있지 않아요.</p>
+      <p class="note">병원 평가 등급 출처: 건강보험심사평가원 병원평가정보서비스 (공공데이터포털, 공공누리 제1유형).</p>
     </section>
     <section class="card sec"><h2>홈 화면에 추가</h2>${installBanner(true)}</section>
     <section class="card sec"><h2>내 메모 백업</h2>

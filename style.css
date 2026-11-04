@@ -172,3 +172,14 @@ code { font-size: 14px; }
 .filter-row .chip.plain { border: 1px solid var(--line); }
 @media (prefers-color-scheme: dark) { .chip.surg { background: #3a2508; } }
 .chip.lead { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 심평원 병원 평가 등급 */
+.grades { list-style: none; padding: 0; margin: 0; }
+.grade-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.grade-row:last-child { border-bottom: 0; }
+.grade { flex: none; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.grade.g1 { background: var(--accent-soft); color: var(--accent); }
+.grade.g2, .grade.g3 { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+.grade.g4, .grade.g5 { background: #fdecd8; color: var(--warn); }
+.grade.gx { color: var(--muted); font-weight: 500; }
+@media (prefers-color-scheme: dark) { .grade.g4, .grade.g5 { background: #3a2508; } }
