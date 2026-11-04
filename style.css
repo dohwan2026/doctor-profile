@@ -162,3 +162,13 @@ code { font-size: 14px; }
 .hosp-chips .chip { flex: none; white-space: nowrap; }
 .install { position: relative; padding-right: 44px; background: var(--accent-soft); border-color: transparent; }
 .install-x { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; font-size: 16px; color: var(--muted); }
+
+/* 수술 분야 · 학회 직책 */
+.chip.surg { background: #fdecd8; color: var(--warn); }
+.chip.plain.surg-t { color: var(--warn); border-color: currentColor; }
+.chip.lead { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+.filter-row { margin: 0 0 6px; }
+.filter-row .chip { border: 0; font: inherit; font-size: 13px; cursor: pointer; padding: 6px 12px; }
+.filter-row .chip.plain { border: 1px solid var(--line); }
+@media (prefers-color-scheme: dark) { .chip.surg { background: #3a2508; } }
+.chip.lead { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

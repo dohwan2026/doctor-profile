@@ -58,7 +58,12 @@ const KEY_HOSP = 'dp.hosp';
 let hospFilter = (() => { try { return localStorage.getItem(KEY_HOSP) || ''; } catch { return ''; } })();
 if (hospFilter && !HOSPITALS.some(h => h.hospital === hospFilter)) hospFilter = '';
 function setHospFilter(v) { hospFilter = v; try { localStorage.setItem(KEY_HOSP, v); } catch {} }
-const inHosp = d => !hospFilter || d.hospital === hospFilter;
+// '수술 분야만' 보기 (이 기기에 기억)
+const KEY_SURG = 'dp.surg';
+let surgOnly = (() => { try { return localStorage.getItem(KEY_SURG) === '1'; } catch { return false; } })();
+function setSurgOnly(v) { surgOnly = v; try { localStorage.setItem(KEY_SURG, v ? '1' : ''); } catch {} }
+const inHosp = d => (!hospFilter || d.hospital === hospFilter) && (!surgOnly || d.surgery);
+const SURG_RE = /수술|시술|이식|절제|치환술|재건술|성형술|봉합술|접합술|중재술|스텐트|ESD|EMR|PCI|TAVI/;
 
 // ---------- 유틸 ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -166,7 +171,9 @@ function docCard(d) {
   const chips = [
     y != null ? `<span class="chip">전문의 ${y}년차</span>` : '',
     d.paperCount ? `<span class="chip">논문 ${d.paperCount}편</span>` : '',
-    ...(d.specialties || []).slice(0, 3).map(s => `<span class="chip plain">${esc(s)}</span>`),
+    d.surgery ? '<span class="chip surg">수술 분야</span>' : '',
+    d.lead ? `<span class="chip lead">${esc(d.lead[0])}</span>` : '',
+    ...(d.specialties || []).slice(0, 3).map(s => `<span class="chip plain ${SURG_RE.test(s) ? 'surg-t' : ''}">${esc(s)}</span>`),
   ].join('');
   return `<button class="card doc-item" data-id="${esc(d.id)}">
     <div class="doc-row">
@@ -194,11 +201,14 @@ function renderHome() {
   const hospChips = HOSPITALS.length > 1
     ? `<div class="chips hosp-chips">${['', ...HOSPITALS.map(h => h.hospital)].map(h =>
         `<button class="chip ${hospFilter === h ? '' : 'plain'}" data-h="${esc(h)}">${h ? esc(h) : '전체 병원'}</button>`).join('')}</div>` : '';
+  const surgChip = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>`;
   view.innerHTML = `
     ${installBanner()}
     <input class="search" type="search" id="q" placeholder="의사 이름, 진료과, 질환 (예: 무릎, 갑상선)" value="${esc(query)}" autocomplete="off">
     ${hospChips}
+    ${surgChip}
     <div id="res"></div>`;
+  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderHome(); };
   const hc = $('.hosp-chips');
   if (hc) hc.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); renderHome(); } };
   const res = $('#res');
@@ -233,7 +243,9 @@ function renderDept(dept) {
   window.scrollTo(0, 0);
   const list = DOCTORS.filter(d => inHosp(d) && (d._dept === dept || (d.depts || []).some(x => baseDept(x) === dept)))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
-  view.innerHTML = `<p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
+  view.innerHTML = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>
+    <p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
+  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderDept(dept); };
   bindCards(view);
 }
 
@@ -268,7 +280,9 @@ function renderDetail(id) {
   const tiles = [];
   if (y != null) tiles.push(`<div class="tile"><div class="v">${y}<small>년차</small></div><div class="l">전문의 (${d.specialistYear}년~)*</div></div>`);
   if (d.paperCount) tiles.push(`<div class="tile"><div class="v">${d.paperCount}<small>편</small></div><div class="l">등록 논문</div></div>`);
-  if ((d.career || []).length) tiles.push(`<div class="tile"><div class="v">${d.career.length}<small>건</small></div><div class="l">경력 항목</div></div>`);
+  const top = (d.roles || []).filter(r => r.r === 3).length;
+  if (top) tiles.push(`<div class="tile"><div class="v">${top}<small>곳</small></div><div class="l">학회 회장·이사장</div></div>`);
+  else if ((d.career || []).length) tiles.push(`<div class="tile"><div class="v">${d.career.length}<small>건</small></div><div class="l">경력 항목</div></div>`);
   const papers = (d.papers || []).map(p => `<li><a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(p.title)}" target="_blank" rel="noopener">${esc(p.title)}</a>
     <div class="note" style="margin:0">${esc(p.journal)} · ${esc(p.date)}</div></li>`).join('');
 
@@ -282,10 +296,14 @@ function renderDetail(id) {
         </div>
         <button class="icon-btn fav ${n.fav ? 'on' : ''}" id="favBtn" aria-label="관심 의사">${n.fav ? '★' : '☆'}</button>
       </div>
-      ${(d.specialties || []).length ? `<div class="chips">${d.specialties.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+      ${(d.specialties || []).length ? `<div class="chips">${d.specialties.map(s => `<span class="chip ${SURG_RE.test(s) ? 'surg' : ''}">${esc(s)}</span>`).join('')}</div>` : ''}
+      ${(d.specialties || []).some(x => SURG_RE.test(x)) ? '<p class="note" style="margin:8px 0 0">주황색 = 진료분야에 적힌 수술·시술 (병원이 수술 건수는 공개하지 않아요)</p>' : ''}
     </section>
     ${tiles.length ? `<div class="tiles">${tiles.join('')}</div>` : '<div style="height:12px"></div>'}
     ${now.length ? `<section class="card sec"><h2>현재 맡고 있는 일</h2><ul>${now.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
+    ${(d.roles || []).length ? `<section class="card sec"><h2>학회 주요 직책 <small>${d.roles.length}</small></h2>
+      <p class="note" style="margin:0 0 6px">그 분야 학회에서 회장·이사 등을 맡았다는 건 동료 의사들에게 인정받는다는 간접 지표예요.</p>
+      <ul>${d.roles.map(r => `<li class="${r.now ? 'cur' : ''}">${r.r === 3 ? '<b>' : ''}${esc(r.t)}${r.r === 3 ? '</b>' : ''}</li>`).join('')}</ul></section>` : ''}
     <section class="card sec"><h2>내 메모 · 물어볼 것</h2>
       <textarea id="memo" placeholder="진료 때 물어볼 것, 진료 받아본 느낌 등 (이 폰에만 저장)">${esc(n.memo || '')}</textarea></section>
     ${listSec('경력', d.career)}
