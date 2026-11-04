@@ -1,0 +1,5 @@
+crawl/
+data/
+make_icons.py
+__pycache__/
+*.tmp

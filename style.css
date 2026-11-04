@@ -126,3 +126,37 @@ textarea.big { min-height: 160px; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
   max-width: calc(100% - 32px); z-index: 20;
 }
+
+/* 검색형 화면 */
+body { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+.h2 { font-size: 15px; color: var(--muted); margin: 18px 0 8px; }
+.dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.dept {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; color: var(--text); text-decoration: none; font-size: 15px;
+}
+.dept small { color: var(--muted); font-size: 12px; }
+.doc-row { display: flex; align-items: center; gap: 12px; }
+.doc-txt { flex: 1; min-width: 0; }
+.ph { width: 48px; height: 60px; object-fit: cover; border-radius: 10px; background: var(--line); flex: none; }
+.ph.big { width: 72px; height: 90px; }
+.fav { font-size: 26px; color: var(--muted); }
+.fav.on { color: #e8a400; }
+details.sec > summary { list-style: none; cursor: pointer; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary h2 { display: flex; justify-content: space-between; margin: 0; }
+details.sec > summary h2::after { content: '▾'; }
+details.sec:not([open]) > summary h2::after { content: '▸'; }
+details.sec[open] > summary { margin-bottom: 8px; }
+.sec h2 small { font-weight: 500; margin-left: 4px; margin-right: auto; }
+li.cur { font-weight: 700; }
+.papers li { margin-bottom: 8px; }
+.papers a { text-decoration: none; }
+code { font-size: 14px; }
+.hosp-chips { margin: -4px 0 6px; }
+.hosp-chips .chip { border: 0; font: inherit; font-size: 13px; cursor: pointer; padding: 6px 12px; }
+.hosp-chips .chip.plain { border: 1px solid var(--line); }
+.hosp-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
+.hosp-chips::-webkit-scrollbar { display: none; }
+.hosp-chips .chip { flex: none; white-space: nowrap; }

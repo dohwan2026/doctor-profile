@@ -1,6 +1,6 @@
-// 앱 파일만 캐시 (네트워크 우선, 실패 시 캐시). 공공데이터 API 응답은 캐시하지 않는다.
-const CACHE = 'doctor-profile-v1';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+// 앱 파일만 캐시 (네트워크 우선, 실패 시 캐시). 다른 사이트(의사 사진 등)는 캐시하지 않는다.
+const CACHE = 'doctor-profile-v3';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'doctors_index.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
