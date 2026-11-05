@@ -39,13 +39,80 @@ const gradeChip = v => /^\d$/.test(v)
 // 검색용 문자열 미리 만들기
 // 진료과 묶음용 이름: "[ 소화기내과 (건강증진센터) ]" → "소화기내과", "외과(암센터)" → "외과"
 const baseDept = n => String(n || '').replace(/^\[\s*|\s*\]$/g, '').replace(/\s*\([^()]*\)\s*$/, '').replace(/(과)분과$/, '$1').trim();
+// 병원마다 다른 진료과 이름 → 표준 진료과 (센터·클리닉 이름은 null)
+const DEPT_RULES = [
+  [/구강|치과|치의학|치주|교정과|보존과|보철과|임플란트/, '치과'],
+  [/이비인후/, '이비인후과'],
+  [/신경외과/, '신경외과'],
+  [/정형외과/, '정형외과'],
+  [/성형외과/, '성형외과'],
+  [/흉부|심장외과|폐식도|심장혈관외과/, '흉부외과'],
+  [/소아외과/, '소아외과'],
+  [/간담|간이식|담도|췌/, '간담췌외과', /외과$/],
+  [/위장관|위외과|상부/, '위장관외과', /외과$/],
+  [/대장|항문/, '대장항문외과', /외과$/],
+  [/유방/, '유방외과', /외과$/],
+  [/갑상선|내분비/, '갑상선·내분비외과', /외과$/],
+  [/이식|혈관/, '이식·혈관외과', /외과$/],
+  [/외상/, '외상외과'],
+  [/외과$/, '외과'],
+  [/소화기/, '소화기내과'],
+  [/순환기|심장|심혈관/, '순환기내과'],
+  [/호흡기|폐/, '호흡기내과'],
+  [/류마티스/, '류마티스내과'],
+  [/알레르기/, '알레르기내과'],
+  [/내분비|당뇨/, '내분비내과'],
+  [/신장/, '신장내과'],
+  [/혈액|종양내과/, '혈액종양내과'],
+  [/감염/, '감염내과'],
+  [/노년|노인/, '노년내과'],
+  [/소아|신생아/, '소아청소년과'],
+  [/산부인|산과|부인과/, '산부인과'],
+  [/비뇨/, '비뇨의학과'],
+  [/안과/, '안과'],
+  [/피부/, '피부과'],
+  [/정신/, '정신건강의학과'],
+  [/신경과/, '신경과'],
+  [/재활/, '재활의학과'],
+  [/방사선종양/, '방사선종양학과'],
+  [/영상의학|방사선과/, '영상의학과'],
+  [/마취|통증/, '마취통증의학과'],
+  [/진단검사/, '진단검사의학과'],
+  [/병리/, '병리과'],
+  [/핵의학/, '핵의학과'],
+  [/응급/, '응급의학과'],
+  [/가정의학/, '가정의학과'],
+  [/직업환경|산업의학/, '직업환경의학과'],
+  [/예방의학/, '예방의학과'],
+  [/건강의학|건강증진의학|건진의학|검진의학/, '건강의학과'],
+  [/중환자/, '중환자의학과'],
+  [/입원의학/, '입원의학과'],
+  [/임상약리/, '임상약리학과'],
+  [/유전/, '임상유전체의학과'],
+  [/한방|한의|침구/, '한방진료과'],
+  [/완화|호스피스/, '호스피스완화의학과'],
+  [/내과$/, '내과'],
+];
+function canonDept(name) {
+  const out = [];
+  for (const part of String(name || '').split(/[\/,]/)) {
+    const m = part.replace(/\s+/g, ' ').match(/([가-힣·ㆍ\-]*과)(?:\s|$)/g);
+    if (!m) { if (/건강증진|검진|헬스케어/.test(part)) out.push('건강의학과'); continue; }
+    const n = m[m.length - 1].trim().replace(/[·ㆍ\-\s]/g, '');
+    if (/^\s*(소아|신생아)/.test(part) && !/외과$/.test(n)) { out.push('소아청소년과'); continue; }
+    for (const [re, label, need] of DEPT_RULES) if (re.test(n) && (!need || need.test(n))) { out.push(label); break; }
+  }
+  return out;
+}
 for (const d of DOCTORS) {
   d._dept = baseDept(d.dept);
   // 대표 진료과 + 함께 속한 진료과·센터 (목록 숫자와 진료과 화면이 같은 기준을 쓰도록)
   d._depts = [...new Set([d.dept, ...(d.depts || [])].map(baseDept).filter(Boolean))];
+  d._cats = [...new Set(d._depts.flatMap(canonDept))];
   d._name = d.name.toLowerCase();
-  d._main = [d.name, d.hospital, ...(d.depts || [d.dept]), ...(d.specialties || [])].join(' ').toLowerCase();
+  d._main = [d.name, d.hospital, ...(d.depts || [d.dept]), ...d._cats, ...(d.specialties || [])].join(' ').toLowerCase();
 }
+const CATS = new Set(DEPT_RULES.map(r => r[1]));
 
 // 상세(학력·경력·논문)는 병원 단위로 필요할 때 <script> 로 받는다 (file:// 에서도 동작)
 const DETAIL = {};
@@ -251,12 +318,13 @@ function renderHome() {
     }
     const favs = DOCTORS.filter(d => noteOf(d.id).fav);
     const depts = {};
-    for (const d of DOCTORS) if (inHosp(d)) for (const k of d._depts) depts[k] = (depts[k] || 0) + 1;
+    for (const d of DOCTORS) if (inHosp(d)) for (const k of d._cats) depts[k] = (depts[k] || 0) + 1;
     res.innerHTML = `
       ${favs.length ? `<h2 class="h2">관심 의사</h2>${favs.map(docCard).join('')}` : ''}
       <h2 class="h2">진료과로 찾기</h2>
       <div class="dept-grid">${Object.entries(depts).sort((a, b) => a[0].localeCompare(b[0], 'ko'))
-        .map(([k, n]) => `<a class="dept" href="#/dept/${encodeURIComponent(k)}">${esc(k)}<small>${n}</small></a>`).join('')}</div>`;
+        .map(([k, n]) => `<a class="dept" href="#/dept/${encodeURIComponent(k)}">${esc(k)}<small>${n}</small></a>`).join('')}</div>
+      <p class="note">병원마다 다른 진료과 이름은 하나로 묶었어요. 암센터·로봇수술센터 같은 센터·클리닉은 위 검색창에서 찾을 수 있어요.</p>`;
   };
   draw();
   $('#q').oninput = e => { query = e.target.value; draw(); };
@@ -265,7 +333,7 @@ function renderHome() {
 function renderDept(dept) {
   setChrome(dept, true);
   window.scrollTo(0, 0);
-  const list = DOCTORS.filter(d => inHosp(d) && d._depts.includes(dept))
+  const list = DOCTORS.filter(d => inHosp(d) && (CATS.has(dept) ? d._cats : d._depts).includes(dept))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
   view.innerHTML = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>
     <p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');

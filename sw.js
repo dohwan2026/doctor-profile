@@ -1,5 +1,5 @@
 // 앱 파일만 캐시 (네트워크 우선, 실패 시 캐시). 다른 사이트(의사 사진 등)는 캐시하지 않는다.
-const CACHE = 'doctor-profile-v10';
+const CACHE = 'doctor-profile-v11';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'doctors_index.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
