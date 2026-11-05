@@ -41,6 +41,8 @@ const gradeChip = v => /^\d$/.test(v)
 const baseDept = n => String(n || '').replace(/^\[\s*|\s*\]$/g, '').replace(/\s*\([^()]*\)\s*$/, '').replace(/(과)분과$/, '$1').trim();
 for (const d of DOCTORS) {
   d._dept = baseDept(d.dept);
+  // 대표 진료과 + 함께 속한 진료과·센터 (목록 숫자와 진료과 화면이 같은 기준을 쓰도록)
+  d._depts = [...new Set([d.dept, ...(d.depts || [])].map(baseDept).filter(Boolean))];
   d._name = d.name.toLowerCase();
   d._main = [d.name, d.hospital, ...(d.depts || [d.dept]), ...(d.specialties || [])].join(' ').toLowerCase();
 }
@@ -249,7 +251,7 @@ function renderHome() {
     }
     const favs = DOCTORS.filter(d => noteOf(d.id).fav);
     const depts = {};
-    for (const d of DOCTORS) if (inHosp(d) && d._dept) depts[d._dept] = (depts[d._dept] || 0) + 1;
+    for (const d of DOCTORS) if (inHosp(d)) for (const k of d._depts) depts[k] = (depts[k] || 0) + 1;
     const hosp = HOSPITALS.map(h => `${esc(h.hospital)} ${h.doctors.length}명`).join(', ');
     res.innerHTML = `
       ${favs.length ? `<h2 class="h2">관심 의사</h2>${favs.map(docCard).join('')}` : ''}
@@ -265,7 +267,7 @@ function renderHome() {
 function renderDept(dept) {
   setChrome(dept, true);
   window.scrollTo(0, 0);
-  const list = DOCTORS.filter(d => inHosp(d) && (d._dept === dept || (d.depts || []).some(x => baseDept(x) === dept)))
+  const list = DOCTORS.filter(d => inHosp(d) && d._depts.includes(dept))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
   view.innerHTML = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>
     <p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
