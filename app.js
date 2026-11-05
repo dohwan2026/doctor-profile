@@ -13,6 +13,7 @@ const HOSPITALS = (window.DOCTOR_INDEX || []).slice().sort((a, b) => a.hospital.
 const DOCTORS = HOSPITALS.flatMap(h => h.doctors.map(d => ({ ...d, hospital: h.hospital, code: h.code, collectedAt: h.collectedAt })));
 const BY_ID = new Map(DOCTORS.map(d => [d.id, d]));
 const GRADES = Object.fromEntries(HOSPITALS.map(h => [h.code, h.grades]));
+const HOSP_INFO = Object.fromEntries(HOSPITALS.map(h => [h.code, h]));
 
 // 심평원 병원평가 (병원 단위 등급). m = 이 의사와 관련 있는지 (진료과·진료분야 기준)
 const ASM = [
@@ -292,6 +293,26 @@ function gradeSec(d) {
     <p class="note" style="margin:8px 0 0">의사 개인이 아닌 <b>병원 전체</b> 평가예요 (1등급이 가장 좋음). 건강보험심사평가원 적정성 평가 최근 결과 · ${esc(g.at)} 확인</p>
   </section>`;
 }
+function bookSec(d) {
+  const h = HOSP_INFO[d.code] || {};
+  const b = h.book || {};
+  const who = `${d.dept ? d.dept + ' ' : ''}${d.name}${d.title ? ' ' + d.title : ''}`;
+  const btns = [
+    b.url ? `<a class="btn primary" href="${esc(b.url)}" target="_blank" rel="noopener">온라인 진료예약</a>`
+      : `<a class="btn primary" href="${esc(d.sourceUrl)}" target="_blank" rel="noopener">병원 의료진 페이지에서 예약</a>`,
+    b.tel ? `<a class="btn" href="tel:${esc(b.tel.replace(/[^0-9]/g, ''))}">예약 전화 ${esc(b.tel)}</a>` : '',
+    b.kakao ? `<a class="btn" href="${esc(b.kakao)}" target="_blank" rel="noopener">카카오톡으로 예약</a>` : '',
+  ].filter(Boolean).join('');
+  return `<section class="card sec"><h2>진료 예약</h2>
+    <div class="book-btns">${btns}</div>
+    <p class="note" style="margin:10px 0 0">예약 화면에서 <b>${esc(who)}</b>를 고르세요.
+      <button class="linkish" id="copyWho" type="button">이름 복사</button></p>
+    ${h.type === '상급종합' ? `<details class="note" style="margin:8px 0 0"><summary style="cursor:pointer">처음 진료라면 <b>진료의뢰서</b>를 준비하세요</summary>
+      <p style="margin:6px 0 0">${esc(d.hospital)}은 상급종합병원이라, 처음 진료받을 때 동네 병·의원에서 받은 진료의뢰서가 있어야 건강보험이 적용돼요.
+      응급, 분만, 치과, 가정의학과, 장애인의 재활의학과 진료, 혈우병은 의뢰서 없이도 돼요. 의뢰서는 가까운 의원에서 진료를 받고 요청하면 발급해 줘요.</p></details>` : ''}
+    <p class="note" style="margin:8px 0 0">이 앱은 예약을 대신 해 주지 않아요. 병원 홈페이지·전화로 직접 예약해요. 진료 일정은 병원 사정에 따라 바뀔 수 있어요.</p>
+  </section>`;
+}
 function renderDetail(id) {
   const base = BY_ID.get(id);
   if (!base) return go('#/');
@@ -333,6 +354,7 @@ function renderDetail(id) {
       ${(d.specialties || []).some(x => SURG_RE.test(x)) ? '<p class="note" style="margin:8px 0 0">주황색 = 진료분야에 적힌 수술·시술 (병원이 수술 건수는 공개하지 않아요)</p>' : ''}
     </section>
     ${tiles.length ? `<div class="tiles">${tiles.join('')}</div>` : '<div style="height:12px"></div>'}
+    ${bookSec(d)}
     ${gradeSec(d)}
     ${now.length ? `<section class="card sec"><h2>현재 맡고 있는 일</h2><ul>${now.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
     ${(d.roles || []).length ? `<section class="card sec"><h2>학회 주요 직책 <small>${d.roles.length}</small></h2>
@@ -354,6 +376,11 @@ function renderDetail(id) {
     setNote(id, { fav: !noteOf(id).fav });
     toast(noteOf(id).fav ? '관심 의사에 추가했어요' : '관심 의사에서 뺐어요');
     renderDetail(id);
+  };
+  $('#copyWho').onclick = () => {
+    const txt = d.name;
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject())
+      .then(() => toast(`'${txt}' 복사했어요`), () => toast('복사하지 못했어요'));
   };
   let t;
   $('#memo').oninput = e => { clearTimeout(t); t = setTimeout(() => setNote(id, { memo: e.target.value.trim() }), 400); };

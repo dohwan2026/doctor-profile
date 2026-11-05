@@ -183,3 +183,7 @@ code { font-size: 14px; }
 .grade.g4, .grade.g5 { background: #fdecd8; color: var(--warn); }
 .grade.gx { color: var(--muted); font-weight: 500; }
 @media (prefers-color-scheme: dark) { .grade.g4, .grade.g5 { background: #3a2508; } }
+
+.book-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.book-btns .btn { text-decoration: none; text-align: center; flex: 1 1 140px; }
+.linkish { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
