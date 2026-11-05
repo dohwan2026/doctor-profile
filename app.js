@@ -252,13 +252,11 @@ function renderHome() {
     const favs = DOCTORS.filter(d => noteOf(d.id).fav);
     const depts = {};
     for (const d of DOCTORS) if (inHosp(d)) for (const k of d._depts) depts[k] = (depts[k] || 0) + 1;
-    const hosp = HOSPITALS.map(h => `${esc(h.hospital)} ${h.doctors.length}명`).join(', ');
     res.innerHTML = `
       ${favs.length ? `<h2 class="h2">관심 의사</h2>${favs.map(docCard).join('')}` : ''}
       <h2 class="h2">진료과로 찾기</h2>
       <div class="dept-grid">${Object.entries(depts).sort((a, b) => a[0].localeCompare(b[0], 'ko'))
-        .map(([k, n]) => `<a class="dept" href="#/dept/${encodeURIComponent(k)}">${esc(k)}<small>${n}</small></a>`).join('')}</div>
-      <p class="note">수록: ${hosp}</p>`;
+        .map(([k, n]) => `<a class="dept" href="#/dept/${encodeURIComponent(k)}">${esc(k)}<small>${n}</small></a>`).join('')}</div>`;
   };
   draw();
   $('#q').oninput = e => { query = e.target.value; draw(); };
