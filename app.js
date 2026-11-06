@@ -367,7 +367,39 @@ function bindInstall() {
 
 // ---------- 라우팅 ----------
 const go = h => { location.hash = h; };
-window.addEventListener('hashchange', render);
+// 목록 화면의 스크롤 위치·보여 준 카드 수를 기억했다가, 뒤로 오면 그대로 되돌린다
+const pageMem = {};
+let curHash = location.hash || '#/';
+let shown = 0;   // 지금 화면에 그린 카드 수
+window.addEventListener('hashchange', () => {
+  pageMem[curHash] = { y: window.scrollY, n: shown };
+  curHash = location.hash || '#/';
+  shown = 0;
+  render();
+});
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+const restoreScroll = () => { const m = pageMem[curHash]; window.scrollTo(0, m ? m.y : 0); };
+// 카드 클릭은 화면 전체에 한 번만 연결 (화면을 그릴 때마다 붙이면 쌓여서 느려짐)
+view.addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) go('#/d/' + encodeURIComponent(b.dataset.id)); });
+// 긴 목록은 PAGE 장씩 그리고, 끝에 닿으면 더 그린다
+const PAGE = 40;
+let moreObs = null;
+function pagedList(el, list, start) {
+  if (moreObs) { moreObs.disconnect(); moreObs = null; }
+  const add = n => {
+    const from = shown;
+    shown = Math.min(list.length, shown + n);
+    el.insertAdjacentHTML('beforeend', list.slice(from, shown).map(docCard).join(''));
+    const old = el.querySelector(':scope > .more'); if (old) old.remove();
+    if (shown < list.length) {
+      el.insertAdjacentHTML('beforeend', '<div class="more note" style="text-align:center;padding:12px">불러오는 중…</div>');
+      moreObs = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) add(PAGE); }, { rootMargin: '600px' });
+      moreObs.observe(el.querySelector(':scope > .more'));
+    }
+  };
+  shown = 0;
+  add(Math.max(PAGE, start || 0));
+}
 // '내 주변'을 골라 둔 채 앱을 다시 열면 위치를 새로 받아 반영 (홈은 renderHome 이 직접 처리)
 if (regionFilter === 'near') locate().then(() => { refreshRegion(); if (location.hash.length >= 3) render(); }, () => {});
 $('#backBtn').onclick = () => (history.length > 1 ? history.back() : go('#/'));
@@ -408,9 +440,6 @@ function docCard(d) {
     ${chips ? `<div class="chips">${chips}</div>` : ''}
   </button>`;
 }
-function bindCards(el) {
-  el.addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) go('#/d/' + encodeURIComponent(b.dataset.id)); });
-}
 
 // ---------- 홈: 검색 ----------
 let query = '';
@@ -438,28 +467,29 @@ function renderHome() {
     ${hospChips}
     ${surgChip}
     <div id="res"></div>`;
-  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderHome(); };
+  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); delete pageMem[curHash]; renderHome(); };
   $('#regionRow').onclick = e => {
     const b = e.target.closest('[data-r]');
     if (!b) return;
-    setRegionFilter(b.dataset.r); setHospFilter(''); refreshRegion(); renderHome();
+    setRegionFilter(b.dataset.r); setHospFilter(''); refreshRegion(); delete pageMem[curHash]; renderHome();
   };
   const hr = $('#hospRow');
-  if (hr) hr.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); renderHome(); } };
+  if (hr) hr.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); delete pageMem[curHash]; renderHome(); } };
   if (nearWait) locate().then(() => { refreshRegion(); if (location.hash.length < 3) renderHome(); },
     err => { const m = $('#nearMsg'); if (m) m.textContent = err.message; });
   const sel = $('#regionRow .chip:not(.plain)'); if (sel) sel.scrollIntoView({ block: 'nearest', inline: 'center' });
   const selH = $('#hospRow .chip:not(.plain)'); if (selH) selH.scrollIntoView({ block: 'nearest', inline: 'center' });
   const res = $('#res');
-  bindCards(res);
   bindInstall();
-  const draw = () => {
+  const draw = (start = 0) => {
     const q = query.trim();
+    if (moreObs) { moreObs.disconnect(); moreObs = null; }
+    shown = 0;
     if (q) {
       const list = search(q);
-      res.innerHTML = list.length
-        ? `<p class="note">${list.length}명${lastExpanded.length ? ` · <span title="${esc(lastExpanded.join(', '))}">${esc(lastExpanded.slice(0, 6).join('·'))}${lastExpanded.length > 6 ? ' 등' : ''}도 함께 찾았어요</span>` : ''}</p>` + list.slice(0, 100).map(docCard).join('') + (list.length > 100 ? '<p class="note">100명까지만 보여요. 검색어를 더 넣어 보세요.</p>' : '')
-        : '<p class="empty">찾는 의사가 없어요.<br>이름 일부나 다른 질환명으로 찾아보세요.</p>';
+      if (!list.length) { res.innerHTML = '<p class="empty">찾는 의사가 없어요.<br>이름 일부나 다른 질환명으로 찾아보세요.</p>'; return; }
+      res.innerHTML = `<p class="note">${list.length}명${lastExpanded.length ? ` · <span title="${esc(lastExpanded.join(', '))}">${esc(lastExpanded.slice(0, 6).join('·'))}${lastExpanded.length > 6 ? ' 등' : ''}도 함께 찾았어요</span>` : ''}</p><div id="list"></div>`;
+      pagedList($('#list'), list, start);
       return;
     }
     const favs = DOCTORS.filter(d => noteOf(d.id).fav);
@@ -472,19 +502,20 @@ function renderHome() {
         .map(([k, n]) => `<a class="dept" href="#/dept/${encodeURIComponent(k)}">${esc(k)}<small>${n}</small></a>`).join('')}</div>
       <p class="note">병원마다 다른 진료과 이름은 하나로 묶었어요. 암센터·로봇수술센터 같은 센터·클리닉은 위 검색창에서 찾을 수 있어요.</p>`;
   };
-  draw();
+  draw((pageMem[curHash] || {}).n);
+  restoreScroll();
   $('#q').oninput = e => { query = e.target.value; draw(); };
 }
 
 function renderDept(dept) {
   setChrome(dept, true);
-  window.scrollTo(0, 0);
   const list = DOCTORS.filter(d => inHosp(d) && (CATS.has(dept) ? d._cats : d._depts).includes(dept))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
   view.innerHTML = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>
-    <p class="note">${filterLabel() ? esc(filterLabel()) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
-  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderDept(dept); };
-  bindCards(view);
+    <p class="note">${filterLabel() ? esc(filterLabel()) + ' · ' : ''}${list.length}명 · 경력 긴 순</p><div id="list"></div>`;
+  pagedList($('#list'), list, (pageMem[curHash] || {}).n);
+  restoreScroll();
+  $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); delete pageMem[curHash]; renderDept(dept); };
 }
 
 // ---------- 상세 ----------
