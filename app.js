@@ -608,7 +608,7 @@ function renderInfo() {
     <section class="card sec"><h2>수록 데이터</h2>
       <dl class="kv">${HOSPITALS.map(h => `<dt>${esc(h.hospital)}</dt><dd>${h.doctors.length}명 · ${esc(h.collectedAt)} 수집</dd>`).join('')}</dl>
       <p class="note">병원 홈페이지의 의료진 소개(학력·경력·학회·논문)를 모은 것이에요. 의사 개인별 진료·수술 건수는 병원이 공개하지 않아 들어 있지 않아요.</p>
-      <p class="note">병원 평가 등급 출처: 건강보험심사평가원 병원평가정보서비스 (공공데이터포털, 공공누리 제1유형).</p>
+      <p class="note">병원 평가 등급·위치 출처: 건강보험심사평가원 병원평가정보서비스·병원정보서비스 (공공데이터포털, 공공누리 제1유형).</p>
     </section>
     <section class="card sec"><h2>홈 화면에 추가</h2>${installBanner(true)}</section>
     <section class="card sec"><h2>내 메모 백업</h2>
