@@ -155,7 +155,49 @@ function setHospFilter(v) { hospFilter = v; try { localStorage.setItem(KEY_HOSP,
 const KEY_SURG = 'dp.surg';
 let surgOnly = (() => { try { return localStorage.getItem(KEY_SURG) === '1'; } catch { return false; } })();
 function setSurgOnly(v) { surgOnly = v; try { localStorage.setItem(KEY_SURG, v ? '1' : ''); } catch {} }
-const inHosp = d => (!hospFilter || d.hospital === hospFilter) && (!surgOnly || d.surgery);
+// 지역 (이 기기에 기억). '내 주변' 위치는 기억하지 않고 그때그때 폰에서 받는다.
+const REGIONS = [
+  ['서울', /서울/], ['경기', /경기/], ['인천', /인천/], ['강원', /강원/], ['대전·충청', /대전|세종|충북|충남/],
+  ['대구·경북', /대구|경북/], ['부산·울산·경남', /부산|울산|경남/], ['광주·전라', /광주|전남|전북/], ['제주', /제주/],
+];
+const regionOf = h => h.loc ? (REGIONS.find(([, re]) => re.test(h.loc.s)) || [''])[0] : '';
+const KEY_REGION = 'dp.region';
+let regionFilter = (() => { try { return localStorage.getItem(KEY_REGION) || ''; } catch { return ''; } })();
+function setRegionFilter(v) { regionFilter = v; try { localStorage.setItem(KEY_REGION, v); } catch {} }
+const NEAR_KM = 15;   // '내 주변' = 이 거리 안 병원 (없으면 가까운 3곳)
+let myPos = null;     // {x: 경도, y: 위도} — 메모리에만
+function distKm(h) {
+  if (!myPos || !h.loc) return Infinity;
+  const r = Math.PI / 180, dy = (h.loc.y - myPos.y) * r, dx = (h.loc.x - myPos.x) * r * Math.cos(myPos.y * r);
+  return 6371 * Math.hypot(dx, dy);
+}
+function regionHospitals() {
+  if (regionFilter === 'near') {
+    if (!myPos) return [];
+    const byDist = HOSPITALS.filter(h => h.loc).sort((a, b) => distKm(a) - distKm(b));
+    const near = byDist.filter(h => distKm(h) <= NEAR_KM);
+    return near.length >= 3 ? near : byDist.slice(0, 3);
+  }
+  return regionFilter ? HOSPITALS.filter(h => regionOf(h) === regionFilter) : HOSPITALS;
+}
+let regionSet = null;   // 지역 안 병원 이름 (renderHome 에서 갱신)
+function refreshRegion() { regionSet = regionFilter ? new Set(regionHospitals().map(h => h.hospital)) : null; }
+refreshRegion();
+const inHosp = d => (hospFilter ? d.hospital === hospFilter : (!regionSet || regionSet.has(d.hospital))) && (!surgOnly || d.surgery);
+function filterLabel() {
+  if (hospFilter) return hospFilter;
+  if (regionFilter === 'near') return `내 주변 병원 ${regionSet ? regionSet.size : 0}곳`;
+  return regionFilter;
+}
+function locate() {
+  return new Promise((ok, no) => {
+    if (!navigator.geolocation) return no(new Error('이 브라우저는 위치를 지원하지 않아요'));
+    navigator.geolocation.getCurrentPosition(
+      p => { myPos = { x: p.coords.longitude, y: p.coords.latitude }; ok(); },
+      e => no(new Error(e.code === 1 ? '위치 권한이 꺼져 있어요. 설정에서 이 앱(사파리)의 위치 접근을 허용해 주세요.' : '위치를 찾지 못했어요. 잠시 후 다시 해 보세요.')),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+  });
+}
 const SURG_RE = /수술|시술|이식|절제|치환술|재건술|성형술|봉합술|접합술|중재술|스텐트|ESD|EMR|PCI|TAVI/;
 
 // ---------- 유틸 ----------
@@ -168,17 +210,102 @@ function toast(msg) {
 const careerYears = d => (d.specialistYear ? THIS_YEAR - d.specialistYear : null);
 const isCurrent = l => /현재|現/.test(l);
 
+// 쉬운 말 → 병원 진료분야에 쓰이는 말 (검색어에 왼쪽 말이 들어 있으면 오른쪽 말들도 함께 찾는다)
+const SYN = [
+  ['무릎', '무릎 슬관절 관절경 인공관절 연골 십자인대 반월상'],
+  ['허리', '허리 척추 요추 디스크 추간판 협착'],
+  ['디스크', '디스크 추간판 척추'],
+  ['목디스크', '경추 추간판 척추'],
+  ['척추', '척추 요추 경추 디스크 추간판 측만'],
+  ['어깨', '어깨 견관절 회전근개 오십견 관절경'],
+  ['오십견', '오십견 견관절 어깨'],
+  ['손목', '손목 수부 손목터널 수지'],
+  ['손가락', '손가락 수부 수지'],
+  ['발목', '발목 족부 족관절'],
+  ['발바닥', '족저근막 족부'],
+  ['엉덩이', '고관절'],
+  ['골반', '고관절 골반'],
+  ['관절염', '관절염 류마티스 인공관절 통풍'],
+  ['뼈', '골다공증 골절'],
+  ['치매', '치매 인지 알츠하이머 기억'],
+  ['기억력', '치매 인지 기억'],
+  ['어지러', '어지럼 현훈 어지러움'],
+  ['두통', '두통 편두통'],
+  ['손떨림', '떨림 파킨슨 이상운동'],
+  ['떨림', '떨림 파킨슨 이상운동'],
+  ['경련', '뇌전증 간질 경련'],
+  ['중풍', '뇌졸중 뇌경색 뇌혈관'],
+  ['뇌졸중', '뇌졸중 뇌경색 뇌출혈 뇌혈관'],
+  ['심장', '심장 부정맥 협심증 심부전 관상동맥 판막 심근경색'],
+  ['가슴통증', '협심증 관상동맥 심근경색'],
+  ['부정맥', '부정맥 심방세동'],
+  ['혈압', '고혈압 혈압'],
+  ['콜레스테롤', '고지혈 이상지질 콜레스테롤'],
+  ['당뇨', '당뇨'],
+  ['비만', '비만 대사'],
+  ['콩팥', '신장 콩팥 투석 사구체'],
+  ['쓸개', '담낭 담석 담도'],
+  ['담석', '담석 담낭 담도'],
+  ['위', '위암 위장 위염 역류 위내시경'],
+  ['속쓰림', '역류 위염 소화성궤양'],
+  ['장', '대장 장질환 염증성장'],
+  ['변비', '변비 배변 항문'],
+  ['치질', '치질 치핵 항문'],
+  ['간', '간암 간염 간경변 지방간 간질환 간이식'],
+  ['소변', '배뇨 요실금 전립선 방광'],
+  ['요실금', '요실금 배뇨'],
+  ['전립선', '전립선'],
+  ['눈', '백내장 녹내장 망막 황반 각막 안구'],
+  ['시력', '백내장 녹내장 망막 황반 근시 굴절'],
+  ['코', '비염 부비동 축농증 비중격'],
+  ['축농증', '부비동 축농증'],
+  ['코골이', '코골이 수면무호흡'],
+  ['귀', '난청 이명 중이염 어지럼'],
+  ['이명', '이명 난청'],
+  ['잠', '수면 불면 수면무호흡'],
+  ['불면', '불면 수면'],
+  ['우울', '우울 기분'],
+  ['불안', '불안 공황'],
+  ['피부', '피부 아토피 건선 두드러기 여드름'],
+  ['탈모', '탈모 모발'],
+  ['기침', '천식 기침 만성폐쇄성 폐렴'],
+  ['숨', '천식 만성폐쇄성 호흡곤란 폐질환'],
+  ['임신', '임신 산과 고위험 태아 분만'],
+  ['난임', '난임 불임 생식'],
+  ['불임', '난임 불임 생식'],
+  ['생리', '월경 자궁 부인'],
+  ['자궁', '자궁 부인'],
+  ['아기', '소아 신생아 영유아'],
+  ['아이', '소아 영유아 성장'],
+  ['키', '성장'],
+  ['갑상선', '갑상선'],
+  ['유방', '유방'],
+  ['다리', '하지정맥류 말초혈관'],
+  ['혈관', '혈관 하지정맥류 대동맥 말초혈관'],
+  ['암', '암 종양'],
+];
+function expand(t) {
+  const alts = new Set([t]);
+  for (const [k, v] of SYN) if (k.length > 1 ? t.includes(k) : t === k) for (const w of v.split(' ')) alts.add(w);
+  if (t.length === 1 && alts.size > 1) alts.delete(t);   // 한 글자는 풀어 쓴 말로만 찾기
+  return [...alts];
+}
+let lastExpanded = [];   // 화면에 '함께 찾은 말' 안내용
 function search(q) {
   const toks = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!toks.length) return [];
+  const alts = toks.map(expand);
+  lastExpanded = alts.flatMap((a, i) => a.filter(w => w !== toks[i]));
   const out = [];
   for (const d of DOCTORS) {
     if (!inHosp(d)) continue;
     let score = 0, ok = true;
-    for (const t of toks) {
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
       if (d._name === t) score += 100;
       else if (d._name.startsWith(t)) score += 60;
-      else if (d._main.includes(t)) score += 20;
+      else if (!(t.length === 1 && !alts[i].includes(t)) && d._main.includes(t)) score += 20;   // '간'·'눈' 같은 한 글자는 '시간'·'간질'에 걸리지 않게 풀어 쓴 말로만
+      else if (alts[i].some(w => d._main.includes(w))) score += 15;
       else { ok = false; break; }
     }
     if (ok) out.push([score, d]);
@@ -241,6 +368,8 @@ function bindInstall() {
 // ---------- 라우팅 ----------
 const go = h => { location.hash = h; };
 window.addEventListener('hashchange', render);
+// '내 주변'을 골라 둔 채 앱을 다시 열면 위치를 새로 받아 반영 (홈은 renderHome 이 직접 처리)
+if (regionFilter === 'near') locate().then(() => { refreshRegion(); if (location.hash.length >= 3) render(); }, () => {});
 $('#backBtn').onclick = () => (history.length > 1 ? history.back() : go('#/'));
 $('#settingsBtn').onclick = () => go('#/info');
 
@@ -291,19 +420,36 @@ function renderHome() {
     view.innerHTML = `<div class="empty"><p><b>의료진 데이터가 없어요.</b></p><p>PC에서 <code>python crawl/snuh.py</code> 를 실행해 데이터를 받아 주세요.</p></div>`;
     return;
   }
-  const hospChips = HOSPITALS.length > 1
-    ? `<div class="chips hosp-chips">${['', ...HOSPITALS.map(h => h.hospital)].map(h =>
-        `<button class="chip ${hospFilter === h ? '' : 'plain'}" data-h="${esc(h)}">${h ? esc(h) : '전체 병원'}</button>`).join('')}</div>` : '';
+  const fmtKm = k => k < 10 ? k.toFixed(1) + 'km' : Math.round(k) + 'km';
+  const regionChips = `<div class="chips hosp-chips" id="regionRow">${[['', '전체'], ['near', '📍 내 주변'], ...REGIONS.map(([r]) => [r, r])]
+    .filter(([r]) => !r || r === 'near' || HOSPITALS.some(h => regionOf(h) === r))
+    .map(([r, label]) => `<button class="chip ${regionFilter === r ? '' : 'plain'}" data-r="${esc(r)}">${esc(label)}</button>`).join('')}</div>`;
+  const rh = regionHospitals();
+  const nearWait = regionFilter === 'near' && !myPos;
+  const hospChips = regionFilter && !nearWait
+    ? `<div class="chips hosp-chips" id="hospRow">${[['', regionFilter === 'near' ? `${NEAR_KM}km 안 전체` : `${regionFilter} 전체`], ...rh.map(h => [h.hospital, h.hospital + (regionFilter === 'near' ? ` · ${fmtKm(distKm(h))}` : '')])]
+        .map(([h, label]) => `<button class="chip ${hospFilter === h ? '' : 'plain'}" data-h="${esc(h)}">${esc(label)}</button>`).join('')}</div>`
+    : nearWait ? '<p class="note" id="nearMsg">위치를 확인하는 중…</p>' : '';
   const surgChip = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>`;
   view.innerHTML = `
     ${installBanner()}
     <input class="search" type="search" id="q" placeholder="의사 이름, 진료과, 질환 (예: 무릎, 갑상선)" value="${esc(query)}" autocomplete="off">
+    ${regionChips}
     ${hospChips}
     ${surgChip}
     <div id="res"></div>`;
   $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderHome(); };
-  const hc = $('.hosp-chips');
-  if (hc) hc.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); renderHome(); } };
+  $('#regionRow').onclick = e => {
+    const b = e.target.closest('[data-r]');
+    if (!b) return;
+    setRegionFilter(b.dataset.r); setHospFilter(''); refreshRegion(); renderHome();
+  };
+  const hr = $('#hospRow');
+  if (hr) hr.onclick = e => { const b = e.target.closest('[data-h]'); if (b) { setHospFilter(b.dataset.h); renderHome(); } };
+  if (nearWait) locate().then(() => { refreshRegion(); if (location.hash.length < 3) renderHome(); },
+    err => { const m = $('#nearMsg'); if (m) m.textContent = err.message; });
+  const sel = $('#regionRow .chip:not(.plain)'); if (sel) sel.scrollIntoView({ block: 'nearest', inline: 'center' });
+  const selH = $('#hospRow .chip:not(.plain)'); if (selH) selH.scrollIntoView({ block: 'nearest', inline: 'center' });
   const res = $('#res');
   bindCards(res);
   bindInstall();
@@ -312,7 +458,7 @@ function renderHome() {
     if (q) {
       const list = search(q);
       res.innerHTML = list.length
-        ? `<p class="note">${list.length}명</p>` + list.slice(0, 100).map(docCard).join('') + (list.length > 100 ? '<p class="note">100명까지만 보여요. 검색어를 더 넣어 보세요.</p>' : '')
+        ? `<p class="note">${list.length}명${lastExpanded.length ? ` · <span title="${esc(lastExpanded.join(', '))}">${esc(lastExpanded.slice(0, 6).join('·'))}${lastExpanded.length > 6 ? ' 등' : ''}도 함께 찾았어요</span>` : ''}</p>` + list.slice(0, 100).map(docCard).join('') + (list.length > 100 ? '<p class="note">100명까지만 보여요. 검색어를 더 넣어 보세요.</p>' : '')
         : '<p class="empty">찾는 의사가 없어요.<br>이름 일부나 다른 질환명으로 찾아보세요.</p>';
       return;
     }
@@ -336,7 +482,7 @@ function renderDept(dept) {
   const list = DOCTORS.filter(d => inHosp(d) && (CATS.has(dept) ? d._cats : d._depts).includes(dept))
     .sort((a, b) => (careerYears(b) ?? -1) - (careerYears(a) ?? -1));
   view.innerHTML = `<div class="chips filter-row"><button class="chip ${surgOnly ? 'surg' : 'plain'}" id="surgBtn" aria-pressed="${surgOnly}">${surgOnly ? '✓ ' : ''}수술·시술 분야 의사만</button></div>
-    <p class="note">${hospFilter ? esc(hospFilter) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
+    <p class="note">${filterLabel() ? esc(filterLabel()) + ' · ' : ''}${list.length}명 · 경력 긴 순</p>` + list.map(docCard).join('');
   $('#surgBtn').onclick = () => { setSurgOnly(!surgOnly); renderDept(dept); };
   bindCards(view);
 }

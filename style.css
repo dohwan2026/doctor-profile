@@ -187,3 +187,5 @@ code { font-size: 14px; }
 .book-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .book-btns .btn { text-decoration: none; text-align: center; flex: 1 1 140px; }
 .linkish { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
+#hospRow { margin-top: -2px; }
+#hospRow .chip { font-size: 13px; }
